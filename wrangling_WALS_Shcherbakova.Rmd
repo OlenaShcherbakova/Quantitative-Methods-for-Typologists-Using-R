@@ -1,0 +1,127 @@
+---
+title: "Data wrangling: WALS"
+author: "Olena Shcherbakova"
+date: '2022-11-07'
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+Before starting, we need to (install and) load necessary packages.
+
+```{r}
+library(tidyverse)
+library(janitor)
+```
+
+## How were WALS-related files downloaded?
+
+All files on WALS in cldf format are stored on Zenodo: <https://zenodo.org/record/3731125#.Y2jZOuTMJZU>. These can be downloaded and extracted on the local machine or accessed online.
+
+```{r}
+wals <- read_delim("data/cldf_wals/languages.csv") %>% #obtaining languages
+  select("ID", "Name", "Glottocode") %>%
+  rename(Language_ID = "ID") %>% #renaming the column to avoid problems
+  left_join(read_delim(
+    "data/cldf_wals/values.csv") %>% 
+      select("Language_ID", "Parameter_ID", "Value")
+    ) %>% #obtaining values per feature and language
+  left_join(read_delim(
+    "data/cldf_wals/codes.csv") %>% 
+      rename(Parameter_name = "Name") %>% 
+      select("Parameter_ID", "Parameter_name", 
+                    "Description"))
+wals
+```
+
+Online example:
+
+```{r}
+wals <- read_delim("https://raw.githubusercontent.com/cldf-datasets/wals/master/cldf/languages.csv") %>% #obtainng languages
+  select("ID", "Name", "Glottocode") %>%
+  rename(Language_ID = "ID") %>% #renaming the column to avoid problems
+  left_join(read_delim(
+    "https://raw.githubusercontent.com/cldf-datasets/wals/master/cldf/values.csv") %>%
+      select("Language_ID", 
+             "Parameter_ID", 
+              "Value")) %>% #obtaining values per feature & language
+  left_join(
+    read_delim("https://raw.githubusercontent.com/cldf-datasets/wals/master/cldf/codes.csv") %>% 
+      rename(Parameter_name = "Name") %>% 
+      select("Parameter_ID", "Parameter_name", 
+                    "Description"))
+```
+
+## Goals
+
+-   **summarizing information on two WALS features**
+-   long --\> wide dataframe format
+-   wide --\> long dataframe format
+-   `select`ing variables
+-   `filter`ing observations (rows)
+-   creating new variables
+
+1.  we transform our dataframe from long to wide format.
+
+```{r}
+wals_wide <- wals %>%
+  select(!c(Description, Parameter_name, Glottocode, Language_ID)) %>%
+  distinct() %>% #removes duplicate rows based on all columns
+  pivot_wider(names_from = Parameter_ID, values_from = Value)
+wals_wide
+```
+
+2.  we transform dataframe from wide to long format.
+
+```{r}
+wals_long <- wals_wide %>% 
+  pivot_longer(cols = !Name, #alternative: cols = `81A`:`90G`
+               names_to = "Parameter_ID", values_to = "Value") 
+wals_long
+```
+
+3.  we summarize the information on the order of object and verb (83A) and adposition and noun phrase (85A) from WALS by:
+
+-   `filter`ing the rows, so that only observations with `83A` and `85A` values in `Parameter_ID` column are kept
+
+-   `select`ing only relevant columns
+
+-   removing duplicate rows with `distinct`
+
+-   reshaping the dataframe into the "wide" format using `pivot_wider`
+
+-   removing observations with missing values for both WALS features using `is.na` within `filter`
+
+-   creating a new variable using `case_when` within `mutate`
+
+-   removing all observations that do not fall into the 4 major groups by `filter`ing
+
+-   count how many languages are in each remaining group using `tabyl`
+
+Here is our `wals` dataframe, and it has a long format:
+
+```{r}
+wals
+```
+
+```{r}
+wals_word_order <- wals %>%
+  filter(Parameter_ID == "83A" | Parameter_ID == "85A") %>%
+  select(!c(Description, Parameter_name)) %>%
+  distinct() %>% #removes duplicate rows based on all columns
+  pivot_wider(names_from = Parameter_ID, values_from = Value) %>%
+  filter(!is.na(`83A`), !is.na(`85A`)) %>%
+  mutate(Word_order_combination = 
+           case_when(
+    `83A` == "2" & `85A` == "1" ~ "VO + Postpositions",
+    `83A` == "2" & `85A` == "2" ~ "VO + Prepositions",
+    `83A` == "1" & `85A` == "1" ~ "OV + Postpositions",
+    `83A` == "1" & `85A` == "2" ~ "OV + Prepositions",
+    TRUE ~ "something else")
+    ) %>%
+  filter(Word_order_combination != "something else") %>% #removing observations with "something else" value in Word_order_combination
+  tabyl(`Word_order_combination`) #counting the number of observations in each group
+
+wals_word_order
+```

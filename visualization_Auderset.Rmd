@@ -1,0 +1,375 @@
+---
+title: "R Teach-In ALT 2022: Visualization with ggplot2 and maps"
+author: "Sandra Auderset"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    keep_tex: no
+header-includes:
+  - |
+    ```{=latex}
+    \usepackage{fvextra}
+    \DefineVerbatimEnvironment{Highlighting}{Verbatim}{
+      breaksymbolleft={}, 
+      showspaces = false,
+      showtabs = false,
+      breaklines,
+      commandchars=\\\{\}
+    }
+    ```
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=80),tidy="styler",echo=TRUE,dev = "cairo_pdf",warning = FALSE,fig.align = 'center',out.width="0.9\\textwidth")
+```
+
+# Preparation
+```{r load packages, warning=FALSE, message=FALSE}
+library(ggmap)
+library(ggpubr)
+library(ggsci)
+library(ggthemes)
+library(maps)
+library(tidyverse)
+library(viridis)
+```
+
+# Visualizing categorical data with Glottolog
+
+We will use the curated data set from Glottolog created in the previous session, the one named `joined_glottolog' and exported as glottolog_curated.tsv.
+
+```{r read data}
+# read in data
+gl_curated <- read_tsv("data/glottolog_curated.tsv")
+# check available info
+glimpse(gl_curated)
+```
+
+## Histograms of language endangerment
+First, we want to get an overview of the distribution of language endangerment across the languages in Glottolog. 
+This is done in ggplot2 with `geom_histogram'. Since the endangerment variable is categorical (rather than numeric), we need to add a statistic so ggplot knows what to display. In this case we simply want to count how the number of data points by level.
+
+```{r histogram}
+hist_endangerment <- ggplot(data = gl_curated, aes(x = Endangerment)) +
+  geom_histogram(stat = "count") +
+  theme_bw()
+hist_endangerment
+```
+
+This gives a first impression, but there are some improvements we want to add. The levels are ordered alphabetically (default), but an order from least to most endangered is more informative. We thus turn this variable into a factor and order the factor levels before plotting.
+
+The y axis label could also be more informative, telling us explicitly that the count are number of languages.
+```{r histogram better}
+# turn endangerment into factor, order factor levels
+gl_curated <- gl_curated %>%
+  mutate(Endangerment = factor(Endangerment, levels = c("Not endangered", "Shifting", "Threatened", "Moribund", "Nearly extinct", "Extinct")))
+glimpse(gl_curated)
+
+# updated plot with factor levels and new y-axis label
+hist_endangerment <- ggplot(data = gl_curated, aes(x = Endangerment)) +
+  geom_histogram(stat = "count") +
+  labs(y = "Number of languages") +
+  theme_bw()
+hist_endangerment
+```
+
+Much better! 
+Now we would like to see the distribution per macroarea. There are a number of different ways to incorporate this variable. 
+One is to color the histogram bars proportinally by macroarea with the `fill' aesthetic. Let's try.
+```{r histogram color}
+hist_endangerment_ma <- ggplot(data = gl_curated, aes(x = Endangerment, fill = Macroarea)) +
+  geom_histogram(stat = "count") +
+  labs(y = "Number of languages") +
+  theme_bw()
+hist_endangerment_ma
+```
+
+As with endangerment before, the order of the macroareas is alphabetic, but we want to order them in a more intuitive way.
+The colors are also not ideal, so we will replace them with a different color palette from the ggsci package.
+
+```{r histogram color better}
+# turn macroarea into factor, order
+gl_curated <- gl_curated %>%
+  mutate(Macroarea = factor(Macroarea, levels = c("North America", "South America", "Africa", "Eurasia", "Papunesia", "Australia")))
+
+# updated plot with factor levels and new color scheme
+hist_endangerment_ma <- ggplot(data = gl_curated, aes(x = Endangerment, fill = Macroarea)) +
+  geom_histogram(stat = "count") +
+  scale_fill_viridis(discrete = TRUE) +
+  labs(y = "Number of languages") +
+  theme_bw()
+hist_endangerment_ma
+```
+
+Now that we are content with the plot, we will export it to use in our report.
+```{r export plot}
+ggsave(file = "glottolog_histogram.png", plot = hist_endangerment_ma, device = "png", path = "plots/", width = 20, height = 10, units = "cm", dpi = 300)
+```
+
+## Maps: visualizing geographic distributions
+
+### The ggmap package
+
+Let's take a closer look at language endangerment in the Americas. We will do this with the ggmap package using [stamen maps](http://maps.stamen.com/). (You can also use Google maps as the basis, but that requires registering a free API key with Google cloud, more [here](https://rpubs.com/jcraggy/841199).)
+
+First we create a base map of the Americas. We will use the black and white toner background, so we can see the points better.
+```{r base map}
+map_am <- get_stamenmap(bbox = c(left = -170, bottom = -57, right = -30, top = 71), zoom = 3, maptype = "toner-lite", color = "color")
+# check if we got right box
+ggmap(map_am)
+```
+Now we want to add the languages to the map as points colored by endangerment status in Glottolog.
+```{r map points}
+map_am_end <- ggmap(map_am) +
+  geom_point(data = gl_curated, aes(x = Longitude, y = Latitude, color = Endangerment), size = 3) +
+  scale_color_viridis(discrete = TRUE)
+map_am_end
+```
+To make our figure export-ready, we move the legend inside the plot, and remove the axis labels and ticks.
+```{r map points better}
+map_am_end <- ggmap(map_am) +
+  geom_point(data = gl_curated, aes(x = Longitude, y = Latitude, color = Endangerment), size = 3) +
+  scale_color_viridis(discrete = TRUE) +
+  theme_map()
+map_am_end
+```
+Now we are happy with the map and can export the same way as any other graph.
+```{r save map}
+ggsave(file = "map_americas.png", plot = map_am_end, device = "png", path = "plots/", height = 20, units = "cm", dpi = 300)
+```
+
+### World maps with the maps package
+While ggmap is great, the package (for some reason) does not support world maps. So if we want to plot the distribution of a feature on a world map, we have to use the maps package in combination with ggplot2.
+Let's plot the endangerment levels for the whole world.
+As before, we first create a base map, but this time from the maps package.
+```{r world base}
+# create base map with ggplot
+world_base <- ggplot() +
+  coord_fixed() +
+  geom_polygon(data = map_data("world"), aes(x = long, y = lat, group = group))
+world_base
+
+# add points
+map_world_end <- world_base +
+  geom_point(data = gl_curated, aes(x = Longitude, y = Latitude, color = Endangerment), size = 3) +
+  scale_color_viridis(discrete = TRUE) +
+  theme_map()
+map_world_end
+```
+So far so good, but the map needs some beautifying. We will change the map fill to grey, move the legend inside the map, and suppress axis labels. We also crop out the uninhabited parts. Finally, we increase the font size of the legend to make it more legible.
+```{r map world better}
+# create base map with ggplot
+world_base <- ggplot() +
+  coord_fixed() +
+  geom_polygon(data = map_data("world"), aes(x = long, y = lat, group = group), fill = "gray", )
+world_base
+
+# add points
+map_world_end <- world_base +
+  geom_point(data = gl_curated, aes(x = Longitude, y = Latitude, color = Endangerment), size = 3) +
+  scale_color_viridis(discrete = TRUE) +
+  ylim(-65, 80) +
+  theme_map() +
+  theme(panel.background = element_rect(fill = "white", color = "white"),
+        legend.title=element_text(size=11),
+        legend.text=element_text(size=11))
+map_world_end
+```
+Now that we are happy with this map as well, we can export it as before.
+```{r save world map}
+ggsave(file = "map_world.png", plot = map_world_end, device = "png", path = "plots/", width = 20, units = "cm", dpi = 300)
+```
+
+
+# Visualizing continuous variables with phonetic data
+
+To practice visualizing continuous variables, we will use a data set containing various measurements of vowels in Araona (courtesy of Adam Tallman). The file is called araona_vowels and is in tab-separated format.
+```{r read vowel}
+araona_vowels <- read_tsv("data/araona_vowels.tsv")
+glimpse(araona_vowels)
+```
+
+
+## Scatterplot of F1 and F2 values
+
+We plot the F1 and F2 of each measurement against each other in a scatter plot colored by vowel phoneme.
+```{r scatter}
+scatter_f <- ggplot(data = araona_vowels, aes(x = F2_Hz, y = F1_Hz, color = Vowel)) +
+  geom_point() +
+  theme_bw()
+scatter_f
+```
+
+This is nice, but it would be easier to interpret if the arrangement of the vowels would mirror the vowel trapeze. To achieve this, we invert both the x and y axis. We also add our color scheme and make better axis labels, as before.
+```{r scatter better}
+scatter_f <- ggplot(data = araona_vowels, aes(x = F2_Hz, y = F1_Hz, color = Vowel)) +
+  geom_point() +
+  scale_color_nejm() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  labs(x = "F2 in Hz", y = "F1 in Hz") +
+  theme_bw()
+scatter_f
+```
+
+Very nice! There are some measurements that are quite far from the others and we'd like to get a first impression of whether these are all from the same speaker. We thus add a shape parameter to our plot, representing speaker.
+```{r scatter even better}
+scatter_f <- ggplot(data = araona_vowels, aes(x = F2_Hz, y = F1_Hz, color = Vowel, shape = Speaker)) +
+  geom_point(size = 2) +
+  scale_color_nejm() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  labs(x = "F2 in Hz", y = "F1 in Hz") +
+  theme_bw()
+scatter_f
+```
+
+If we were writing a phonetics paper, we would normalize the measurements and look at those outliers to see if they are errors in Praat. But we will skip that here and instead exclude all data points with F1 higher than 1000Hz. This can be done directly while plotting.
+```{r scatter no outlier}
+scatter_f_no <- ggplot(data = filter(araona_vowels, F1_Hz<1000), aes(x = F2_Hz, y = F1_Hz, color = Vowel, shape = Speaker)) +
+  geom_point(size = 2) +
+  scale_color_nejm() +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  labs(x = "F2 in Hz", y = "F1 in Hz") +
+  theme_bw()
+scatter_f_no
+```
+Now we are satisfied and ready to export our Araona vowel trapeze.
+```{r export scatter plot}
+ggsave(file = "vowels_scatter.png", plot = scatter_f_no, device = "png", path = "plots/", width = 20, height = 12, units = "cm", dpi = 300)
+```
+
+
+## Boxplots comparing stressed and unstressed vowels
+
+Next we want to compare intensity, duration, and pitch in stressed and unstressed vowels. These are continuous variables, so we will use a box plot to visualize the distributions.
+```{r box plot}
+# lets remind ourselves what the variables are called
+glimpse(araona_vowels)
+
+# intensity
+box_intens <- ggplot(araona_vowels, aes(x = Stress, y = Intensity_DB)) +
+  geom_boxplot() +
+  theme_bw()
+box_intens
+```
+
+As before, there are certain improvements needed: we want to add a notch, color by group, suppress the legend, and relabel x-axis tick marks.
+```{r box plot better}
+# intensity
+box_intens <- ggplot(araona_vowels, aes(x = Stress, y = Intensity_DB, fill = Stress)) +
+  geom_boxplot(outlier.color = "red") +
+  scale_fill_jco(guide = "none") +
+  stat_summary(fun.y = mean, geom = "point", size = 4, shape = 18) +
+  scale_x_discrete(labels=c("n" = "unstressed", "y" = "stressed")) +
+  labs(y = "Intensity") +
+  theme_bw() +
+  theme(axis.title.x = element_blank())
+box_intens
+```
+
+Let's try the same with duration and pitch.
+```{r box duration pitch}
+# duration
+box_dur <- ggplot(araona_vowels, aes(x = Stress, y = Vowel_Duration_S, fill = Stress)) +
+  geom_boxplot(outlier.color = "red") +
+  scale_fill_jco(guide = "none") +
+  stat_summary(fun.y = mean, geom = "point", size = 4, shape = 18) +
+  scale_x_discrete(labels=c("n" = "unstressed", "y" = "stressed")) +
+  labs(y = "Duration") +
+  theme_bw() +
+  theme(axis.title.x = element_blank())
+box_dur
+
+# pitch
+box_pitch <- ggplot(araona_vowels, aes(x = Stress, y = F0_Mean, fill = Stress)) +
+  geom_boxplot(outlier.color = "red") +
+  scale_fill_jco(guide = "none") +
+  stat_summary(fun.y = mean, geom = "point", size = 4, shape = 18) +
+  scale_x_discrete(labels=c("n" = "unstressed", "y" = "stressed")) +
+  labs(y = "Pitch") +
+  theme_bw() +
+  theme(axis.title.x = element_blank())
+box_pitch
+```
+
+For our report, we'd like to have these all next to each other. To do this, we can use the ggarrange function from the ggpubr package.
+```{r box arrange}
+box_all <- ggarrange(box_intens, box_dur, box_pitch, nrow = 1)
+box_all
+```
+We can export this plot like the others.
+```{r save box}
+ggsave(file = "vowels_stress.png", plot = box_all, device = "png", path = "plots/", width = 20, height = 12, units = "cm", dpi = 300)
+```
+
+
+## Density plots visualizing 
+
+Density plots are useful for visualizing distributions across a continuous variable and allow for easy comparison between different groups.
+We will look at F1 and F2 again, this time considering differences in vowels as well as between speakers and stressed vs unstressed vowels.
+
+As a first step, we create a density plot of F1 and F2 with all the data.
+```{r density}
+# for f1
+density_f1 <- ggplot(araona_vowels, aes(x = F1_Hz)) +
+  geom_density() +
+  theme_bw()
+density_f1
+
+# for f2
+density_f2 <- ggplot(araona_vowels, aes(x = F2_Hz)) +
+  geom_density() +
+  theme_bw()
+density_f2
+```
+
+Since we know that different vowel qualities have different F1 and F2, we split the density curve into one per vowel.
+```{r density position}
+# for f1 with vowels
+density_f1 <- ggplot(araona_vowels, aes(x = F1_Hz, color = Vowel)) +
+  geom_density() +
+  scale_color_nejm() +
+  theme_bw()
+density_f1
+
+# for f2 with vowels
+density_f2 <- ggplot(araona_vowels, aes(x = F2_Hz, color = Vowel)) +
+  geom_density() +
+  scale_color_nejm() +
+  theme_bw()
+density_f2
+```
+
+We now want to see whether stress has an influence on the distributions of F1 and F2 in each vowel. This can easily be done by adding a facet_wrap, which splits the plot according to a grouping variable, here the vowel.
+We also rename the axes as before.
+```{r density facet}
+# f1 by stress
+density_f1_stress <- ggplot(araona_vowels, aes(x = F1_Hz, color = Stress)) +
+  geom_density() +
+  facet_wrap(~Vowel) +
+  scale_color_nejm() +
+  labs(x = "F1", y = "Density") +
+  theme_bw()
+density_f1_stress
+
+# f2 by stress
+density_f2_stress <- ggplot(araona_vowels, aes(x = F2_Hz, color = Stress)) +
+  geom_density() +
+  facet_wrap(~Vowel) +
+  scale_color_nejm() +
+  labs(x = "F2", y = "Density") +
+  theme_bw()
+density_f2_stress
+```
+
+Finally, we can arrange these two plots on top of each other for easy comparison and export.
+```{r density arrange}
+density_f1_f2 <- ggarrange(density_f1_stress, density_f2_stress, nrow = 2)
+density_f1_f2
+```
+
+

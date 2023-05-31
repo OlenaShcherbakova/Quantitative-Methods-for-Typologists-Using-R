@@ -1,0 +1,169 @@
+---
+title: "Data wrangling: Glottolog + task"
+author: "Olena Shcherbakova"
+date: '2022-11-07'
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+Before starting, we need to (install and) load necessary packages.
+
+```{r}
+library(tidyverse)
+library(janitor)
+```
+
+## How were the Glottolog files initially downloaded?
+
+GitHub repository of Glottolog (<https://github.com/glottolog/glottolog/tree/v4.6>) contains the link to the latest version of Glottolog (4.6) files in CLDF format on Zenodo: <https://zenodo.org/record/6802272#.Y2ik-UzMJZU>. The entire folder `glottolog-cldf-v4.6.1.zip` is then downloaded from Zenodo, and only `languages.csv` and `values.csv` are extracted and placed inside the `data/cldf_glottolog` folder of the project. After this, we can open this file in R:
+
+```{r}
+languages_glottolog <- read_csv("data/cldf_glottolog/languages.csv")
+values_glottolog <- read_csv("data/cldf_glottolog/values.csv")
+```
+
+```{r}
+languages_glottolog
+```
+
+```{r}
+values_glottolog
+```
+
+Alternatively, it is possible to use these files in R without manually downloading them to own machine in the following way.
+
+```{r}
+languages_glottolog <- read_csv("https://raw.githubusercontent.com/glottolog/glottolog-cldf/v4.6/cldf/languages.csv")
+values_glottolog <- read_csv("https://raw.githubusercontent.com/glottolog/glottolog-cldf/v4.6/cldf/values.csv")
+```
+
+## Goals
+
+-   **counting how many languages fall under different endangerment status categories: extracting information on langauge endangerment from `values_glottolog` where `aes` stands for "Agglomerated Endangerment Scale (AES)"**
+-   `join`ing several different dataframes into one
+-   `select`ing variables
+-   `filter`ing observations (rows)
+-   creating new variables
+-   separating and uniting columns (variables)
+
+## Wrangling Glottolog
+
+### Stage 1: working with values dataset
+
+1.  we choose the values from `values_glottolog` we are interested in by `filter`ing the `Parameter_ID` variable to contain only `aes` values and nothing else.
+2.  we `select` the variables of interest: `Language_ID, Value, Code_ID`.
+3.  we create a new variable called `Endangerment` by `mutate`ing `Code_ID` variable: the new variable will only contain the part of the string of `Code_ID` without `aes-`.
+
+```{r}
+endangerment_df <- values_glottolog %>%
+  filter(Parameter_ID == "aes") %>% #removing all rows where Parameter_ID is not "aes"
+  select(Language_ID, Value, Code_ID) %>% #selecting only three columns
+  mutate(Endangerment = str_replace(Code_ID, "aes-", "")) #removing the string that corresponds to "aes-"
+endangerment_df
+```
+
+4.  we use `unique` function to check the variety of `Endangerment` status values in our data
+
+```{r}
+unique(endangerment_df$Endangerment)
+```
+
+5.  the labels are self-explanatory, but we want to replace the underscores in `nearly_extinct` and `not_endangered` values with spaces.
+
+6.  we also want all first words to start with uppercase letters by using `str_to_sentence`.
+
+```{r}
+endangerment_df <- endangerment_df %>%
+  mutate(Endangerment = str_replace(Endangerment, "[_]", " ")) %>% #substituting underscores "_" with spaces " "
+  mutate(Endangerment = str_to_sentence(Endangerment)) #making the the initial letters of first words uppercase
+unique(endangerment_df$Endangerment)
+```
+
+```{r}
+endangerment_df
+```
+
+7.  after ensuring that all available values look the way we want, we create another variable called `"Endangerment_manual"`: `recode` within `mutate` to systematically change previous values into numbers.
+8.  then we create another variable using `mutate` called `Extinct_or_nearly_extinct`: `ifelse` specifies two conditions (`Endangerment` column should either have `Extinct` or `Nearly extinct` value) under which the value of this new column is assigned to `1`, otherwise the value will be `1`.
+
+```{r}
+#use one variable as the basis for another: recoding
+endangerment_df_manual <- endangerment_df %>%
+  mutate(Endangerment_manual = 
+           recode(Endangerment, 
+                  "Not endangered" = "1" , #"old" = "new"
+                  "Threatened" = "2",
+                  "Shifting"  = "3",
+                  "Moribund" = "4",
+                  "Nearly extinct" = "5",
+                  "Extinct" = "6")) %>%
+  mutate(Extinct_or_nearly_extinct =
+         ifelse(Endangerment == "Extinct" | Endangerment == "Nearly extinct" , 1, 0))
+ endangerment_df_manual
+```
+
+9.  we `separate` one column into two and `unite` two columns back to one.
+
+```{r}
+values_glottolog
+```
+
+```{r}
+separated_values_glottolog <- values_glottolog %>%
+  select(ID) %>%
+  separate(ID, c("Language_ID", "Parameter_ID"), sep = "-") #separates content of two (or more) columns
+separated_values_glottolog
+
+```
+
+```{r}
+united_values_glottolog <- separated_values_glottolog %>%
+  unite(ID, sep = " ") #unites content of two (or more) columns
+united_values_glottolog
+```
+
+### Stage 2: working with the joined dataset of values and languages
+
+```{r}
+languages_glottolog
+```
+
+10. we join two datasets with `inner_join`, so that we have observations available in both dataframes.
+11. we `select` variables of interest.
+12. we remove languages for which `Longitude` or `Latitude` are unavailable by `filter`ing observations that have `NA`s in either of the variables.
+13. we create another variable called `English_variety` and determine whether or not all available language varieties could be classified as such based on whether or not their names contain the string `"English"`.
+
+```{r}
+joined_glottolog <- endangerment_df %>%
+  inner_join(languages_glottolog, by=c("Language_ID" = "ID")) %>%
+  select(Glottocode, Name, Family_ID, Macroarea, 
+                Longitude, Latitude, Endangerment) %>%
+  filter(!is.na(Longitude), !is.na(Longitude)) %>%
+  mutate(English_variety_outside_Eurasia = 
+           ifelse(str_detect(Name, "English") & 
+                    Macroarea != "Eurasia", 
+                  1, 0))
+```
+
+14. we count how many languages in the joined dataframe correspond to each endangerment status.
+
+```{r}
+joined_glottolog %>% 
+  tabyl(Endangerment)
+```
+
+15. we save the dataframe.
+
+```{r export file}
+write_tsv(joined_glottolog, file = "data/glottolog_curated.tsv")
+```
+
+## Task
+
+Count how many **shifting** **Indo-European** languages spoken **in Eurasia** are present in both `endagerment_df` and `languages_glottolog` dataframes.
+
+Tip #1: `View()` the `endangerment_df` and `languages_glottolog` dataframes to get an idea about how they are structured (e.g. `View(endangerment_df`)).
+
+Tip #2: the languages from the Indo-European language family are classified in Glottolog under `Family_ID` `"indo1319"`.

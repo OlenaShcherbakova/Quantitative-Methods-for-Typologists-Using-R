@@ -1,0 +1,34 @@
+---
+title: "Solution to the task on wrangling Glottolog"
+author: "Olena Shcherbakova"
+date: '2022-12-13'
+output: html_document
+---
+
+## Solution
+
+```{r}
+endangerment_df <- values_glottolog %>% 
+  filter(Parameter_ID == "aes") %>% 
+  select(Language_ID, Value, Code_ID) %>% 
+  mutate(Endangerment = str_replace(Code_ID, "aes-", "")) %>%
+  mutate(Endangerment = str_replace(Endangerment, "[_]", " ")) %>%
+  mutate(Endangerment = str_to_sentence(Endangerment)) %>% 
+  mutate(Endangerment_manual = 
+           recode(Endangerment,
+                  "Nearly extinct" = "Close to extinction")) %>%
+  mutate(Extinct_or_nearly = 
+           ifelse(Endangerment == "Extinct" | 
+           Endangerment == "Nearly extinct", 1, 0)) %>%
+  inner_join(languages_glottolog, by=c("Language_ID" = "ID")) %>%
+  select(Glottocode, Name, Family_ID, Macroarea, 
+         Longitude, Latitude, Endangerment) %>%
+  filter(!is.na(Longitude), !is.na(Latitude)) %>% 
+  mutate(English_outside_Eurasia = 
+           ifelse(str_detect(Name, "English") & Macroarea != "Eurasia", 1, 0)) %>% 
+  filter(Endangerment == "Shifting") %>%
+  mutate(Sampled = ifelse(
+    Family_ID == "indo1319" & Macroarea == "Eurasia", 1, 0)) %>% 
+  tabyl(Sampled)
+endangerment_df
+```

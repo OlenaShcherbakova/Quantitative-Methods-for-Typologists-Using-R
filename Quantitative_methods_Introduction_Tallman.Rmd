@@ -1,0 +1,374 @@
+---
+title: "Quantitative methods in R (code sheet for copying and pasting)"
+author: "Adam Tallman"
+date: "2022-12-13"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R as a language (atomic vectors)
+
+```{r}
+morphemes <- c("The", "class", "will", "continue", "until", "the", "participant", "-s", "leave")
+pos <- c("Det", "Noun", "Aux", "Verb", "Prep", "Det", "Noun", "PL", "Verb")
+duration.seconds <- c("0.07538","0.382087","0.130065","0.605475", "0.399165", "0.107640", "0.556140", "0.121781", "0.322920")
+lexical <- c(F, T, F, T, F, F, T, F, T)
+```
+
+## Functions, types, and error messages
+
+```{r}
+table(pos)
+```
+
+```{r}
+mean(pos)
+```
+```{r}
+mean(duration.seconds)
+```
+
+```{r}
+duration.seconds.numeric <-  as.numeric(duration.seconds)
+duration.seconds.numeric
+```
+
+```{r}
+mean(duration.seconds.numeric)
+```
+## Math in R
+
+```{r}
+1+1
+1*2
+2^2
+sqrt(2)
+```
+
+```{r}
+duration.milliseconds <- duration.seconds.numeric * 1000
+duration.seconds.numeric
+```
+
+```{r}
+duration.milliseconds
+```
+
+```{r}
+duration.ms.normalized <- (duration.milliseconds-min(duration.milliseconds))/(max(duration.milliseconds)-min(duration.milliseconds))
+duration.ms.normalized
+```
+
+## Lists and vectors
+
+```{r}
+allomorphs <- list(c("ðə", "ði"), "klæs", c("wɪl, l"), "kəntɪnjuʊ", "ʌntɪl", c("ðə", "ði"), "stuʊdənt", c("s", "z", "əz") , c("lijv", "lɛft"))
+allomorphs
+```
+
+## Dataframes
+
+```{r}
+sentence <- data.frame(morphemes, pos, lexical, duration.milliseconds)
+sentence
+```
+
+## Dataframes and their vectors
+
+
+```{r}
+sentence$morphemes
+```
+
+## Column binding and row binding
+
+
+```{r}
+more.data <- c("seriously", "adverb", "TRUE", "600")
+
+Frequency <- c("high", "medium", "high", "medium", "high", "high", "low", "high", "low", "medium")
+
+```
+
+
+```{r}
+extended.sentence <- rbind(sentence, more.data)
+extended.sentence
+```
+
+```{r}
+extended.sentence <- cbind(extended.sentence, Frequency)
+extended.sentence
+```
+
+## Loading packages
+
+```{r}
+library(sm)
+library(nhstplot)
+
+```
+
+## Random variables
+
+```{r}
+die <- 1:6 # numbers 1 through 6
+sample(die, 2, replace=TRUE)
+```
+
+```{r}
+X <- function() {
+  die <- 1:6
+  sample(die, size =1, replace=TRUE)
+}
+X()
+```
+
+## Normal distribution
+
+```{r}
+x1 <- cbind(x = rnorm(n=500, m=10, sd=3), group = rep("x1", times=100))
+x2 <- cbind(x = rnorm(n = 500, m=20, sd=3), group = rep("x2", times =100))
+df <- as.data.frame(rbind(x1, x2))
+df$x <- as.numeric(df$x)
+sm.density.compare(df$x, df$group)
+```
+
+
+```{r}
+x1 <- cbind(x = rnorm(n=400, m=10, sd=2), group = rep("x1", times=100))
+x2 <- cbind(x = rnorm(n = 400, m=10, sd=4), group = rep("x2", times =100))
+df <- as.data.frame(rbind(x1, x2))
+df$x <- as.numeric(df$x)
+sm.density.compare(df$x, df$group)
+```
+
+
+## Araona vowels
+
+```{r}
+araonavowels <- read.csv("/Users/Adam/Desktop/database2.csv", header=TRUE)
+araonavowels <- araonavowels[araonavowels$Vowel == "i" | araonavowels$Vowel == "e" | araonavowels$Vowel == "a" | araonavowels$Vowel =="o",]
+sm.density.compare(araonavowels$F1_.Hz., araonavowels$Vowel, xlab="F1 for vowels", col= 1:4, xlim =c(200, 1000))
+legend("topright", legend = levels(as.factor(araonavowels$Vowel)), lty =1, col=1:4)
+```
+
+
+## Probability mass function
+
+```{r}
+wordorders <- c("SOV", "SVO", "VSO", "VOS", "OVS", "OSV", "none")
+frequencies <- data.frame(564, 488, 95, 25, 11, 4, 189)
+colnames(frequencies) <- wordorders
+frequencies
+```
+
+```{r}
+round(frequencies / sum(frequencies), digits=4) 
+```
+
+
+```{r}
+tense.values <- c("Nopasttense", "Onepasttense", "2-3remotepasts", "4>remotepasts")
+frequencies <- data.frame(88, 94, 37, 2)
+colnames(frequencies) <- tense.values
+frequencies
+```
+
+
+```{r}
+freq.list <- data.frame(list((88), (88+94), (88+94+37), (88+94+37+2)))
+tense.cdf <- freq.list / sum(frequencies)
+colnames(tense.cdf) <- tense.values
+tense.cdf
+```
+
+
+```{r}
+par(mfrow = c(1, 1))
+x <- rnorm(500)
+dx <- density(x)
+plot(dx, lwd = 2, main = "Density", col = "red")
+polygon(c(dx$x[dx$x >= 0], 0), c(dx$y[dx$x >= 0], 0),
+        col = rgb(1, 0, 0, alpha = 0.5), border = "red", main = "")
+```
+## Contingency table and the chi-squared test
+
+```{r}
+wordorder <- cbind(c(107, 7), c(12, 70))
+rownames(wordorder) <- c("Postp", "Prep")
+colnames(wordorder) <- c("OV", "VO")
+wordorder
+```
+
+```{r}
+
+barplot(wordorder, main = "Word order VO vs. P across languages", ylab = "Frequency", xlab = "Order inside VP", col= c("grey20", "grey80"))
+legend("topright", c("Postp", "Prep"), fill = c("grey20", "grey80"))
+```
+
+
+
+
+```{r}
+E.formula <- cbind(c("(114*119)/196", "(114*77)/196"), 
+           c("(82*119)/196","(82*77)/196"))
+rownames(E.formula) <- c("Postp", "Prep")
+colnames(E.formula) <- c("OV", "VO")
+data.frame(E.formula)
+
+E <- cbind(c((114*119)/196, (114*77)/196), 
+           c(82*119/196,(82*77)/196))
+rownames(E) <- c("Postp", "Prep")
+colnames(E) <- c("OV", "VO")
+E
+```
+
+```{r}
+library(reshape)
+```
+
+
+```{r}
+wordorder.df <- melt(wordorder)
+colnames(wordorder.df)<-c("Adposition", "Verb.Object", "Frequency")
+E.df <- melt(E)
+colnames(E.df)<-c("Adposition", "Verb.Object", "Expected.Frequency")
+E.df$Observed.Frequency <- wordorder.df$Frequency
+E.df
+```
+
+
+```{r}
+library(nhstplot)
+plotchisqtest(chisq = 3.841459, df = 1)
+```
+
+## Linear model (perfect prediction)
+
+```{r}
+x <- rnorm(50, m =10, sd = 3)
+a = 10
+b = 1
+y <- a+b*x 
+plot(y~x)
+abline(coef(lm(y~x)))
+```
+
+## Linear model (some error)
+
+```{r}
+x <- rnorm(50, m =10, sd = 3)
+a = 10
+b =1
+e <- rnorm(n=50, m=0, sd=1) #Add an error term
+y <- a+b*x +e
+data2 <- data.frame(x,y)
+plot(y~x)
+abline(coef(lm(y~x)))
+title("some error")
+```
+
+
+
+```{r}
+lm(y~x)
+```
+
+```{r}
+x <- rnorm(50, m =10, sd = 3)
+a = 10
+b =1
+e <- rnorm(n=50, m=0, sd=4)
+y <- a+b*x +e
+data3 <- data.frame(x,y)
+data3$group = "large.residuals"
+plot(y~x)
+abline(coef(lm(y~x)))
+title("more error")
+```
+
+
+```{r}
+set.seed(123)
+par(mfrow=c(2,2)) 
+x1 <- rnorm(50, m =10, sd = 3)
+a1 = 10
+b1 =1
+e1 <- rnorm(n=50, m=0, sd=1) #Add an error term
+y1 <- a1+b1*x1 +e1
+data2 <- data.frame(x,y)
+plot(y1~x1)
+abline(coef(lm(y1~x1)))
+title("some error")
+x2 <- rnorm(50, m =10, sd = 3)
+a2 = 10
+b2 =1
+e2 <- rnorm(n=50, m=0, sd=4)
+y2 <- a2+b2*x2 +e2
+data3 <- data.frame(x2,y2)
+data3$group = "large.residuals"
+plot(y2~x2)
+abline(coef(lm(y2~x2)))
+title("more error")
+
+plot(density(e1), xlim=c(-10, 10))
+plot(density(e2), xlim=c(-10, 10))
+```
+
+
+## Length of word and mean reaction time
+
+```{r}
+ldt <- read.csv("/Users/Adam/Desktop/levshina.ldt.csv", header=T)
+head(ldt)
+```
+
+
+```{r}
+attach(ldt)
+plot(Mean_RT~Length)
+abline(lm(Mean_RT~Length), col="green")
+fitted <- predict(lm(Mean_RT~Length))
+for (i in 1:100)
+  lines(c(Length[i], Length[i]), c(Mean_RT[i], fitted[i]), col="red")
+```
+
+
+```{r}
+b <- seq(30,50, 0.01)
+sse <- numeric(length(b))
+for (i in 1:length(b)){
+  a <- mean(Mean_RT) - b[i]*mean(Length)
+  residual <- Mean_RT - a - b[i]*Length
+  sse[i] <- sum(residual^2)
+}
+plot(b, sse, type="l", ylim= c(1420000, 1540000))
+  arrows(37.64, 1445574, 37.64,1420000,  col="red")
+  abline(h=1445574, col="green", lty=2)
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(1:100,Mean_RT,xlab="order",pch=21)
+abline(h=mean(Mean_RT),col="blue")
+for(i in 1:100) lines(c(i,i),c(mean(Mean_RT),Mean_RT[i]),col="red")
+
+#plot(Mean_RT)
+#abline(h = mean(Mean_RT), col="green")
+#fitted <- mean(Mean_RT)
+#for (i in 1:100)
+  #lines(c(Length[i], Length[i]), c(Mean_RT[i], fitted[i]), col="red")
+
+plot(Mean_RT~Length)
+abline(lm(Mean_RT~Length), col="green")
+fitted <- predict(lm(Mean_RT~Length))
+for (i in 1:100)
+  lines(c(Length[i], Length[i]), c(Mean_RT[i], fitted[i]), col="red")
+```

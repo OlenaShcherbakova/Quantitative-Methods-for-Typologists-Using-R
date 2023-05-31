@@ -1,0 +1,77 @@
+---
+title: "R Teach-In ALT 2022: Clause linkage typology using NeighborNets"
+author: "Sandra Auderset"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    keep_tex: no
+header-includes:
+  - |
+    ```{=latex}
+    \usepackage{fvextra}
+    \DefineVerbatimEnvironment{Highlighting}{Verbatim}{
+      breaksymbolleft={}, 
+      showspaces = false,
+      showtabs = false,
+      breaklines,
+      commandchars=\\\{\}
+    }
+    ```
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=80),tidy="styler",echo=TRUE,dev = "cairo_pdf",warning = FALSE,fig.align = 'center',out.width="0.9\\textwidth")
+```
+
+# Preparation
+While neighbornets can be done in R, they are still experimental and do not provide good results yet. It is thus better to prepare the data in R and then use SplitsTree4 to create and visualize the NeighborNet.
+
+We first load the necessary packages.
+```{r load packages, warning=FALSE, message=FALSE}
+library(cluster)
+library(phangorn)
+library(stringi)
+library(tidystringdist)
+library(tidyverse)
+```
+
+Next, we load the data.
+```{r data load}
+cl <- read_csv("data/clause_linkage.csv")
+glimpse(cl)
+```
+
+We create a unique label for each construction. SplitsTree cannot deal with diacritics or colons in taxon names, so we will strip all diacritics and replace colons with periods.
+```{r create label}
+cl <- cl %>%
+  unite(Language:Label, col = "LabelNN", sep = "_", remove = FALSE, na.rm = TRUE) %>%
+  mutate(LabelNN = str_replace_all(LabelNN, ":", ".")) %>%
+  mutate(LabelNN = str_replace_all(LabelNN, "/", ".")) %>%
+  mutate(LabelNN = str_remove_all(LabelNN, "’")) %>%
+  mutate(LabelNN = stri_trans_general(LabelNN, id = "Latin-ASCII")) %>%
+  mutate(across(ILL_scope:Layer, as.factor)) %>%
+  arrange(Language, Label)
+glimpse(cl)
+```
+
+# Creating the distance matrix and exporting the nexus file
+
+To create a neighbornet, we first need to turn our data into a distance matrix. Since we are dealing with categorical variables of mixed data types, we use Gower distance. We use the function daisy from the cluster package to calculate it.
+```{r create dist}
+# create distance matrix
+cl_variables <- cl %>%
+  select(ILL_scope:Layer)
+cl_dist <- daisy(cl_variables, metric = "gower")
+# add labels back
+cl_dist <- as.matrix(cl_dist, labels=TRUE)
+rownames(cl_dist) <- cl$LabelNN
+```
+
+Now we are ready to export the distance matrix for SplitsTree. We use the package phangorn to write it into the required nexus format.
+```{r export nexus}
+# export nexus file for splitstree
+write.nexus.dist(cl_dist, file = "data/clause_linkage_dist.nex")
+```
+

@@ -1,0 +1,126 @@
+---
+title: "The code used for generating the dataframes captured in the slides"
+author: "Olena Shcherbakova"
+date: '2022-11-24'
+output: html_document
+---
+Code used for generating examples used in the slides for the "Data Wrangling" part: screenshots and lines of code.
+
+## Long and wide formats examples
+
+```{r}
+wals <- read.delim("data/cldf_wals/languages.csv", sep = ",") %>% #obtainng languages
+  select("ID", "Name", "Glottocode") %>%
+  rename(Language_ID = "ID") %>% #renaming the column to avoid problems
+  left_join(read.delim(
+    "data/cldf_wals/values.csv", sep = ",") %>% 
+      select("Language_ID", "Parameter_ID", "Value")
+    ) %>% #obtaining values per feature and language
+  left_join(read.delim(
+    "data/cldf_wals/codes.csv", sep = ",") %>% 
+      rename(Parameter_name = "Name") %>% 
+      select("Parameter_ID", "Parameter_name", 
+                    "Description")) %>%
+  select(!c(Description, Parameter_name, Glottocode, Language_ID)) %>%
+  distinct() #removes duplicate rows based on all columns
+```
+
+```{r}
+wals_wide <- wals %>%
+  pivot_wider(names_from = Parameter_ID, values_from = Value)
+View(wals_wide)
+```
+
+
+```{r}
+wals_long <- wals_wide %>% 
+  pivot_longer(
+    cols = !Name,
+    names_to = "Parameter_ID", 
+    values_to = "Value"
+    ) 
+```
+
+
+## Joining dataframes
+
+```{r}
+languages_glottolog <- read.csv("data/cldf_glottolog/languages.csv") %>%
+  select(Name, Glottocode) 
+values_glottolog <- read.csv("data/cldf_glottolog/values.csv") %>%
+  filter(Parameter_ID == "aes") %>% #removing all rows where Parameter_ID is not "aes"
+  select(Language_ID, Value, Code_ID) %>% #selecting only three columns
+  mutate(Endangerment = str_replace(Code_ID, "^[^-]*-", "")) %>%
+  select(Language_ID, Endangerment)
+```
+
+```{r}
+View(languages_glottolog)
+View(values_glottolog)
+```
+
+
+```{r}
+values_glottolog %>%
+  left_join(languages_glottolog, 
+    by=c("Language_ID"="ID")) %>% View()
+```
+## Pipe
+```{r}
+
+wals <- read.delim("data/cldf_wals/languages.csv", sep = ",") %>%
+  rename(Language_ID = "ID") %>%
+  relocate(Name, everything())
+
+wals <- read.delim("data/cldf_wals/languages.csv", sep = ",") 
+wals <- rename(wals, Language_ID = "ID")
+wals <- relocate(wals, Name, everything())
+
+```
+
+## Separating and uniting columns
+```{r}
+values_glottolog <- read.csv("data/cldf_glottolog/values.csv") %>%
+  select(ID)
+
+sep_values_glottolog <- values_glottolog %>%
+  separate(ID, c("Language_ID", "Parameter_ID"), sep = "-") #separates content of two (or more) columns
+
+united_values_glottolog <- sep_values_glottolog %>%
+  unite(ID, sep = " ") #unites content of two (or more) columns
+```
+
+
+## Selecting and filtering
+```{r}
+wals <- read.delim("data/cldf_wals/languages.csv", sep = ",") %>%
+  select(Name, Family)
+
+wals_aa <- wals %>%
+  filter(Family == "Afro-Asiatic")
+
+
+```
+
+## Mutating: mutate with ifelse, case_when and recode
+```{r}
+wals <- read.delim("data/cldf_wals/languages.csv", sep = ",") %>%
+  select(Name, Family) 
+
+wals %>%
+  mutate(Creole = ifelse(str_detect(Name, "Creole"), 1, 0)) %>% View()
+
+wals %>%
+  mutate(Creole = case_when(str_detect(Name, "Creole") ~ "Creole",
+                            str_detect(Name, "Pidgin") ~ "Pidgin",
+                            TRUE ~ "other")) %>% View()
+
+wals %>%
+  mutate(Creole = case_when(str_detect(Name, "Creole") ~ "Creole",
+                            str_detect(Name, "Pidgin") ~ "Pidgin",
+                            TRUE ~ "other")) %>%
+  mutate(Creole_numbered = recode(Creole,
+                                  "Creole" = "1",
+                                  "Pidgin" = "2",
+                                  "other" = "0")) %>% View()
+```
